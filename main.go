@@ -3,18 +3,61 @@ package main
 import (
         git "github.com/libgit2/git2go/v33"
         "log"
+        "os"
 )
 
+func getEnv(key, fallback string) string {
+        if value, ok := os.LookupEnv(key); ok {
+                return value
+        }
+        return fallback
+}
+
 func main() {
-        var lines   []string
-        sourceBranchName := "feat/testdoang"
         destBranchName := "master"
 
-        repo, err := git.OpenRepository("/testrepo")
+        repo, err := git.OpenRepository(getEnv("ANALYZE_REPO", "."))
         if err != nil {
                 log.Fatal(err)
         }
         defer repo.Free()
+
+        currentConfig, err := repo.Config()
+        if err != nil {
+                log.Fatal(err)
+        }
+        defer currentConfig.Free()
+
+        ci, err := currentConfig.NewIterator()
+        if err != nil {
+                log.Fatal(err)
+        }
+        defer ci.Free()
+
+        for {
+                ce, err := ci.Next()
+                if err != nil || ce == nil {
+                        break
+                }
+
+                if ce.Name == "remote.origin.url" {
+                        log.Println("Analyzing repo: " + (ce.Value))
+                        break
+                }
+        }
+
+        currentRef, err := repo.Head()
+        if err != nil {
+                log.Fatal(err)
+        }
+        defer currentRef.Free()
+
+        sourceBranchName, err := currentRef.Branch().Name()
+        if err != nil {
+                log.Fatal(err)
+        }
+
+        log.Printf("Comparing branch %s to %s ", sourceBranchName, destBranchName)
 
         sourceBranch, err := repo.LookupBranch(sourceBranchName, git.BranchLocal)
         if err != nil {
@@ -40,54 +83,28 @@ func main() {
         }
         defer commitDest.Free()
 
-        // fmt.Println(commitSrc.Message())
-        // fmt.Println(commitDest.Message())
-
         commitSrcTree, err := commitSrc.Tree()
         if err != nil {
-            log.Fatal(err)
+                log.Fatal(err)
         }
 
         commitDestTree, err := commitDest.Tree()
         if err != nil {
-            log.Fatal(err)
+                log.Fatal(err)
         }
 
         options, err := git.DefaultDiffOptions()
         if err != nil {
-            log.Fatal(err)
+                log.Fatal(err)
         }
 
         gitDiff, err := repo.DiffTreeToTree(commitSrcTree, commitDestTree, &options)
         if err != nil {
-            log.Fatal(err)
-        }
-
-        // Show all file patch diffs in a commit.
-        log.Println("========================================================")
-        numDeltas, err := gitDiff.NumDeltas()
-        if err != nil {
-            log.Fatal(err)
-        }
-
-        for d := 0; d < numDeltas; d++ {
-            patch, err := gitDiff.Patch(d)
-            if err != nil {
                 log.Fatal(err)
-            }
-            patchString, err := patch.String()
-            if err != nil {
-                log.Fatal(err)
-            }
-            log.Printf("\n%s", patchString)
-            patch.Free()
         }
 
-        log.Println("========================================================")
         gitDiff.ForEach(func(file git.DiffDelta, progress float64) (git.DiffForEachHunkCallback, error) {
-            lines = append(lines, file.OldFile.Path)
-            return nil, nil
+                log.Println(file.OldFile.Path)
+                return nil, nil
         }, git.DiffDetailFiles)
-
-        log.Println(lines)
 }
