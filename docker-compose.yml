@@ -1,0 +1,8 @@
+version: '3'
+services:
+ unittest:
+   build:
+     context: .
+     dockerfile: Dockerfile
+   entrypoint: ["/bin/bash"]
+   command: ["-c", "cd / && git clone https://github.com/habibiefaried/Vulnerability-goapp && cd Vulnerability-goapp && git checkout feat/crda2 && ANALYZE_REPO=/Vulnerability-goapp /main"]
